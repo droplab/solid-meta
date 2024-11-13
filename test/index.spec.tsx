@@ -4,6 +4,7 @@ import { hydrate, render, Show } from "solid-js/web";
 import { MetaProvider, Title, Style, Meta, Link, Base } from "../src";
 import { hydrationScript, removeScript } from "./hydration_script";
 
+//@ts-ignore
 global.queueMicrotask = setImmediate;
 
 test("renders into document.head portal", () => {
@@ -325,6 +326,26 @@ test("Escaping the title meta", () => {
       <MetaProvider>
         <div>
           <Meta content={'Text in "quotes"'} />
+        </div>
+      </MetaProvider>
+    ),
+    div
+  );
+  expect(document.head.innerHTML).toBe(snapshot);
+  dispose();
+});
+
+test("Prevent duplicate meta tags with the same key", () => {
+  let div = document.createElement("div");
+  const snapshot = '<meta key="key2" content="Meta 2"><meta key="key1" content="Meta 3">';
+
+  const dispose = render(
+    () => (
+      <MetaProvider>
+        <div>
+          <Meta key='key1' content="Meta 1" />
+          <Meta key='key2' content="Meta 2" />
+          <Meta key='key1' content="Meta 3" />
         </div>
       </MetaProvider>
     ),

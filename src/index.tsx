@@ -14,6 +14,7 @@ import { isServer, spread, escape, useAssets, ssr } from "solid-js/web";
 export const MetaContext = createContext<MetaContextType>();
 
 interface TagDescription {
+  key?: string;
   tag: string;
   props: Record<string, unknown>;
   setting?: { close?: boolean; escape?: boolean };
@@ -38,22 +39,31 @@ const metaTagProperties: string[] =
     // additional properties
     .concat(["property"]);
 
-const getTagKey = (tag: TagDescription, properties: string[]) => {
-  // pick allowed properties and sort them
-  const tagProps = Object.fromEntries(
-    Object.entries(tag.props)
-      .filter(([k]) => properties.includes(k))
-      .sort()
-  );
+const getTagKey = (tag: TagDescription, properties: string[]) => 
+{
+  if (tag.tag === "title") { return tag.tag; }
+  if (tag.tag === "meta") 
+  {
+    if(tag.props.key) { return tag.tag + "|" + tag.props.key; }
+    else
+    {
+      // pick allowed properties and sort them
+      const tagProps = Object.fromEntries(
+        Object.entries(tag.props)
+          .filter(([k]) => properties.includes(k))
+          .sort()
+      );
 
-  // treat `property` as `name` for meta tags
-  if (Object.hasOwn(tagProps, "name") || Object.hasOwn(tagProps, "property")) {
-    tagProps.name = tagProps.name || tagProps.property;
-    delete tagProps.property;
+      // treat `property` as `name` for meta tags
+      if (Object.hasOwn(tagProps, "name") || Object.hasOwn(tagProps, "property")) {
+        tagProps.name = tagProps.name || tagProps.property;
+        delete tagProps.property;
+      }
+
+      // concat tag name and properties as unique key for this tag
+      return tag + JSON.stringify(tagProps);
+    }
   }
-
-  // concat tag name and properties as unique key for this tag
-  return tag.tag + JSON.stringify(tagProps);
 };
 
 function initClientProvider() {
@@ -94,6 +104,8 @@ function initClientProvider() {
       if (cascadingTags.indexOf(tag.tag) !== -1) {
         const properties = tag.tag === "title" ? titleTagProperties : metaTagProperties;
         const tagKey = getTagKey(tag, properties);
+
+        if (!tagKey) return -1;
 
         //  only cascading tags need to be kept as singletons
         if (!cascadedTagInstances.has(tagKey)) {
@@ -147,7 +159,7 @@ function initClientProvider() {
       const tagKey = getTagKey(tag, properties);
 
       if (tag.ref) {
-        const t = cascadedTagInstances.get(tagKey);
+        const t = tagKey && cascadedTagInstances.get(tagKey);
         if (t) {
           if (tag.ref.parentNode) {
             tag.ref.parentNode.removeChild(tag.ref);
@@ -180,9 +192,14 @@ function initServerProvider() {
       if (cascadingTags.indexOf(tagDesc.tag) !== -1) {
         const properties = tagDesc.tag === "title" ? titleTagProperties : metaTagProperties;
         const tagDescKey = getTagKey(tagDesc, properties);
-        const index = tags.findIndex(
-          prev => prev.tag === tagDesc.tag && getTagKey(prev, properties) === tagDescKey
-        );
+
+        const index = tags.findIndex(prev => {
+          if (!tagDescKey) return false;
+          const prevKey = getTagKey(prev, properties);
+          if (!prevKey) return false;
+          return prev.tag === tagDesc.tag && prevKey === tagDescKey;
+        });
+
         if (index !== -1) {
           tags.splice(index, 1);
         }
@@ -262,13 +279,20 @@ function renderTags(tags: Array<TagDescription>) {
     .join("");
 }
 
+type KeyProp = {
+  /**
+   * If set, this element will override previous meta elements with the same `key` value.
+   * */
+  key?: string;
+};
+
 export const Title: Component<JSX.HTMLAttributes<HTMLTitleElement>> = props =>
   MetaTag("title", props, { escape: true, close: true });
 
 export const Style: Component<JSX.StyleHTMLAttributes<HTMLStyleElement>> = props =>
   MetaTag("style", props, { close: true });
 
-export const Meta: Component<JSX.MetaHTMLAttributes<HTMLMetaElement>> = props =>
+export const Meta: Component<JSX.MetaHTMLAttributes<HTMLMetaElement> & KeyProp> = props =>
   MetaTag("meta", props);
 
 export const Link: Component<JSX.LinkHTMLAttributes<HTMLLinkElement>> = props =>
